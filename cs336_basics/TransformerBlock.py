@@ -29,19 +29,19 @@ class TransformerBlock(nn.Module):
                  d_in: Int,
                  is_rope: bool = False,
                  theta: float = 100000.0,
-                 token_positions = None,
                  max_seq_len: int = 2048,
         ):
         super().__init__()
-        self.attn = MultiHeadAttention(d_model, num_heads, d_in, is_rope, theta, token_positions, max_seq_len)
+        self.attn = MultiHeadAttention(d_model, num_heads, d_in, is_rope, theta, max_seq_len)
         self.ln1 = RMSNorm(d_model)
         self.ln2 = RMSNorm(d_model)
         self.ffn = SwiGLU(d_ff, d_model)
     
-    def forward(self, x: Float[Tensor, " batch sequence_length d_in"]):
+    def forward(self, x: Float[Tensor, " batch sequence_length d_in"],
+                token_pos: Int[Tensor, " batch sequence_length"] = None):
         # Multi-head attention
         add_x = self.ln1(x)
-        add_x = self.attn(add_x)
+        add_x = self.attn(add_x, token_pos)
         x = x + add_x
         # Feed-forward network
         add_x = self.ln2(x)

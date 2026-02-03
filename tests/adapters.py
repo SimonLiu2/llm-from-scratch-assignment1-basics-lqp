@@ -220,13 +220,12 @@ def run_multihead_self_attention_with_rope(
                                d_in=d_in,
                                is_rope=True,
                                theta=theta,
-                               token_positions=token_positions,
                                max_seq_len = max_seq_len)
     model.q_proj.load_state_dict({"weight": q_proj_weight})
     model.k_proj.load_state_dict({"weight": k_proj_weight})
     model.v_proj.load_state_dict({"weight": v_proj_weight})
     model.output_proj.load_state_dict({"weight": o_proj_weight})
-    return model(in_features)
+    return model(in_features, token_positions=token_positions)
 
 
 def run_rope(
@@ -332,12 +331,11 @@ def run_transformer_block(
         d_in = d_model,
         is_rope=True,
         theta=theta,
-        token_positions=token_positions,
         max_seq_len=max_seq_len,
     )
     # transfomer all ‘weight’ in keys to ‘weights’ to match the state_dict keys
     transformer_block.load_state_dict(weights)
-    return transformer_block(in_features)
+    return transformer_block(in_features, token_pos=token_positions)
     
 
 
@@ -429,12 +427,11 @@ def run_transformer_lm(
         num_heads=num_heads,
         d_ff=d_ff,
         rope_theta=rope_theta,
-        token_positions=token_positions,
     )
     # transfomer all ‘weight’ in keys to ‘weights’ to match the state_dict keys
     transformer_lm.load_state_dict(weights)
     print(transformer_lm(in_indices).shape)
-    return transformer_lm(in_indices)
+    return transformer_lm(in_indices, token_pos=token_positions)
     
 
 

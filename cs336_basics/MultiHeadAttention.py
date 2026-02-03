@@ -22,7 +22,6 @@ class MultiHeadAttention(nn.Module):
                  d_in: Int, 
                  is_rope: bool = False,
                  theta: float = 100000.0,
-                 token_positions = None,
                  max_seq_len: int = 2048
         ):
         super().__init__()
@@ -38,10 +37,11 @@ class MultiHeadAttention(nn.Module):
         self.output_proj = Linear(self.d_model, self.d_model)
         if is_rope:
             self.rope = RoPE(theta, self.d_k, max_seq_len=max_seq_len)
-            self.token_positions = token_positions
         
     
-    def forward(self, x: Float[Tensor, " ... sequence_length d_in"]):
+    def forward(self, x: Float[Tensor, " ... sequence_length d_in"],
+                token_positions: Int[Tensor, " sequence_length"] = None
+        ) -> Float[Tensor, " ... sequence_length d_model"]:
         # Linear projections
         Q = self.q_proj(x)
         K = self.k_proj(x)
@@ -58,8 +58,8 @@ class MultiHeadAttention(nn.Module):
                       num_heads=self.num_heads)
         # Apply RoPE if specified
         if self.is_rope:
-            Q = self.rope(Q, self.token_positions)
-            K = self.rope(K, self.token_positions)
+            Q = self.rope(Q, token_positions)
+            K = self.rope(K, token_positions)
         # Apply attention on all the projected vectors in batch
         attn_output = attention(Q, K, V, mask=mask)
         # Concatenate heads

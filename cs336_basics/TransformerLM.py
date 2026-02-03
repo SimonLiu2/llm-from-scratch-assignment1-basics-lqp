@@ -27,14 +27,10 @@ class TransformerLM(nn.Module):
                  num_heads: int,
                  d_ff: int,
                  rope_theta: float,
-                 token_positions = None,
                  device: str = 'cpu'
                  ):
         super().__init__()
-        if token_positions is None:
-            self.token_positions = torch.arange(context_size)
-        else:
-            self.token_positions = token_positions
+        self.device = device
         self.token_embeddings = Embedding(vocab_size, d_model)
         self.layers = nn.ModuleDict()
         for layer in range(num_layers):
@@ -45,17 +41,17 @@ class TransformerLM(nn.Module):
                 d_in=d_model,
                 is_rope=True,
                 theta=rope_theta,
-                token_positions=self.token_positions,
                 max_seq_len=context_size,
             )
             self.layers.add_module(f"{layer}", block)
         self.ln_final = RMSNorm(d_model)
         self.lm_head = Linear(d_model, vocab_size)
 
-    def forward(self, x: Int[Tensor, " batch sequence_length"]):
+    def forward(self, x: Int[Tensor, " batch sequence_length"],
+                token_pos: Int[Tensor, " batch sequence_length"] = None):
         x = self.token_embeddings(x)
         for layer in self.layers.values():
-            x = layer(x)
+            x = layer(x, token_pos=torch.arange(x.shape[1], device=self.device))
         x = self.ln_final(x)
         x = self.lm_head(x)
         return x

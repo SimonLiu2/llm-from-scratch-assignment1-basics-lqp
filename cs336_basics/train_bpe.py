@@ -10,6 +10,11 @@ import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 from .pretokenization_example import find_chunk_boundaries
+from collections import defaultdict
+from tqdm import tqdm
+from concurrent.futures import ProcessPoolExecutor
+
+from cs336_basics.bpe_fast_heapq import *
 
 def read_text(input_path):
     with open(input_path, "r", encoding="utf-8") as f:
@@ -122,6 +127,20 @@ def update_cnt(word_cnt,pair_cnt, merge_pair):
 
     return new_word_cnt,new_pair_cnt
 
+
+def _pre_tokenize_chunk_worker(args):
+    special_tokens, PAT, chunk = args
+    pre_tokens = {}
+    # split the chunk on special tokens
+    parts = re.split("|".join(special_tokens), chunk)
+    for part in parts:
+        tokens = re.finditer(PAT, part)
+        for match in tokens:
+            token_bytes = match.group(0).encode('utf-8')
+            token_tuple = (token_bytes,)
+            pre_tokens[token_tuple] = pre_tokens.get(token_tuple, 0) + 1
+    return pre_tokens
+
 def train_bpe(
     input_path: str | os.PathLike,
     vocab_size: int,
@@ -153,22 +172,23 @@ def train_bpe(
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     pre_tokens_dict: dict[tuple[bytes], int] = {}
     # Parallel processing of chunks
-        
     with open(input_path, "rb") as f:
-        num_process = 10
+        num_process = 64  # You can adjust this number
         boundaries = find_chunk_boundaries(f, num_process, b'<|endoftext|>')
-        # Single threaded processing for comparison
+        chunk_args = []
         for start, end in zip(boundaries[:-1], boundaries[1:]):
             f.seek(start)
             chunk = f.read(end - start).decode('utf-8', errors='ignore')
-            #split the chunk on special tokens
-            parts = re.split("|".join(special_tokens), chunk)
-            for part in parts:
-                tokens = re.finditer(PAT, part)
-                for match in tokens:
-                    token_bytes = match.group(0).encode('utf-8')
-                    token_tuple = (token_bytes)
-                    pre_tokens_dict[token_tuple] = pre_tokens_dict.get(token_tuple, 0) + 1
+            chunk_args.append((special_tokens, PAT, chunk))
+        with ProcessPoolExecutor(max_workers=num_process) as executor:
+            results = list(tqdm(executor.map(_pre_tokenize_chunk_worker, chunk_args), total=len(chunk_args), desc="Pre-tokenizing"))
+        # Merge results
+        for d in tqdm(results, desc="Merging pre-tokenized results"):
+            for k, v in d.items():
+                key = k[0]
+                pre_tokens_dict[key] = pre_tokens_dict.get(key, 0) + v
+    print("Pre-tokenization completed. Number of unique pre-tokens:", 
+          len(pre_tokens_dict))
     vocab = {}
     merges = []
     #bulid initial vocab with special tokens and ascii characters
@@ -203,7 +223,7 @@ def train_bpe(
                 # add counts for new tokens
                 for i in range(len(new_tokens)-1):
                     pair  = (new_tokens[i], new_tokens[i+1])
-                    pair_counts[pair] = pair_counts.get(pair, 0) + pre_tokens_dict[key]    
+                    pair_counts[pair] = pair_counts.get(pair, 0) + pre_tokens_dict[key] 
         # find the most frequent pair
         # if there are multiple pairs with same frequency, choose one with greatest lex order
         def pair_sorter(item):
@@ -239,7 +259,7 @@ def train_bpe(
             current_tokens[key] = new_tokens
         current_size += 1
         loop_number += 1
-        if current_size % 100 == 0:
+        if current_size % 10 == 0:
             print("Current vocab size:", current_size, end="\r")
     # ajust value order, move special tokens to the front
     new_vocab = {}
@@ -253,6 +273,19 @@ def train_bpe(
             new_vocab[i] = vocab[i]
     vocab = new_vocab
         
+    return vocab, merges
+
+def fast_train_bpe(
+        input_path: str | os.PathLike,
+        vocab_size: int,
+        special_tokens: list[str],
+):
+    train = BPE_Trainer()
+    vocab, merges = train.train(
+        input_path,
+        vocab_size,
+        special_tokens,
+    )
     return vocab, merges
 
             

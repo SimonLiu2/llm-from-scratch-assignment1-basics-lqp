@@ -20,14 +20,14 @@ model_config = {
     'context_size': 256,
     'd_model': 512,
     'num_layers': 4,
-    'num_heads': 16,
+    'num_heads': 32,
     'd_ff': 1344,
     'rope_theta': 10000,
     'token_positions': None,
 }
 
 optimizer_config = {
-    "lr": 1e-3,
+    "lr": 1e-2,
     "weight_decay": 0.01,
 }
 
@@ -39,7 +39,8 @@ dataloader_config = {
 
 
 
-def train_and_evaluate(train_data: npt.NDArray, val_data: npt.NDArray):
+def train_and_evaluate(train_data: npt.NDArray, val_data: npt.NDArray, 
+                       is_save: bool = False) -> None:
     loss = nn.CrossEntropyLoss()
     model = TransformerLM(**model_config)
     optimizer = optim.AdamW(model.parameters(), **optimizer_config)
@@ -52,9 +53,9 @@ def train_and_evaluate(train_data: npt.NDArray, val_data: npt.NDArray):
     for epoch in range(num_epochs):
         model.train()
         inputs, targets = get_batch(train_data,
-                  batch_size=32,
-                  context_length=model_config['context_size'], 
-                  device='cuda') # Assuming using GPU 
+                  batch_size=dataloader_config['batch_size'],
+                  context_length=dataloader_config['context_length'], 
+                  device=dataloader_config['device']) # Assuming using GPU 
         optimizer.zero_grad()
         outputs = model(inputs)
         loss_value = loss(outputs.view(-1, model_config['vocab_size']), 
@@ -85,6 +86,8 @@ def train_and_evaluate(train_data: npt.NDArray, val_data: npt.NDArray):
             #clear total losses
             total_train_loss = 0.0
             total_val_loss = 0.0
+    if is_save:
+        torch.save(model.state_dict(), '/home/std10/extend/transformer_lm_model.pth')
 
 if __name__=='__main__':
     train_path = '/home/std10/extend/generated_data/tokenized_data_train.npy'
@@ -92,5 +95,6 @@ if __name__=='__main__':
     # Assuming train_data and val_data are numpy arrays of token IDs
     train_data = np.load(train_path, allow_pickle=True, mmap_mode='r')
     val_data = np.load(val_path, allow_pickle=True, mmap_mode='r')
-    train_and_evaluate(train_data, val_data)
+    train_and_evaluate(train_data, val_data, is_save=True)
+
 
